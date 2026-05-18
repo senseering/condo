@@ -49,16 +49,11 @@ services:
   # other dev-mode toggles enabled. See COOLIFY.md for the rotation steps
   # before any public exposure.
   init:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    # Coolify's `exclude_from_hc: true` is a non-standard field that fails
-    # `docker compose config` validation, so it is NOT set here. The same
-    # one-shot semantics are achieved via `restart: "no"` plus the
-    # `service_completed_successfully` dependency on condo/worker below.
-    # If Coolify still flags init as unhealthy after a successful exit,
-    # add `exclude_from_hc: true` manually in the Coolify UI's compose
-    # override — see COOLIFY.md.
+    # Reuses the image built by the `condo` service below. Building this
+    # Dockerfile in parallel for init + condo + worker peaks at ~3× the
+    # memory of a single build, which OOM-killed the deploy on a 4 GB host;
+    # giving init/worker no build block keeps it to one build.
+    image: condo-monorepo:built
     restart: "no"
     command: ["sh", "-c", "node bin/prepare -f condo && yarn workspace @app/condo migrate"]
     environment:
@@ -86,6 +81,7 @@ services:
         condition: service_healthy
 
   condo:
+    image: condo-monorepo:built
     build:
       context: .
       dockerfile: Dockerfile
@@ -108,9 +104,7 @@ services:
         condition: service_completed_successfully
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: condo-monorepo:built
     restart: unless-stopped
     command: ["yarn", "workspace", "@app/condo", "worker"]
     environment:
