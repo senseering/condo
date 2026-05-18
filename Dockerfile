@@ -74,7 +74,8 @@ RUN chmod +x ./bin/run_condo_domain_tests.sh
 RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
     --mount=type=cache,target=/app/.turbo \
     set -ex \
-    && yarn build \
+    && NODE_OPTIONS="--max-old-space-size=2048" \
+       yarn turbo run build --concurrency=1 \
     && rm -rf /app/out \
     && rm -rf /app/.env  \
     && rm -rf /app/.config /app/.cache /app/.docker  \
