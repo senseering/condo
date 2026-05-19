@@ -79,7 +79,8 @@ RUN --mount=type=cache,target=/usr/local/share/.cache/yarn \
     && rm -rf /app/out \
     && rm -rf /app/.env  \
     && rm -rf /app/.config /app/.cache /app/.docker  \
-    && ls -lah /app/
+    && rm -rf /app/.yarn/cache /app/.yarn/install-state.gz \
+    && ls -lah /app/ /app/.yarn/
 
 # Runtime container
 FROM base
