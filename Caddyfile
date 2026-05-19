@@ -1,0 +1,11 @@
+# Caddy reverse proxy + automatic Let's Encrypt SSL.
+# DOMAIN and ACME_EMAIL come from the .env loaded by docker-compose.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode gzip zstd
+	reverse_proxy condo:4006
+}

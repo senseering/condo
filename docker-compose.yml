@@ -1,25 +1,52 @@
-# Coolify-friendly Compose for evaluation deploys of condo.
+# Self-managed production stack for condo on a single Linux host (e.g. EC2).
 #
-# Conventions enforced for Coolify:
-#  - No `networks:` blocks. Coolify provides a bridge network and routes via
-#    Traefik; custom networks cause intermittent routing failures.
-#  - Postgres/Redis publish no host ports — service-name DNS only.
-#  - Public ingress is the `condo` service on container port 4006, surfaced
-#    through Coolify's magic env var SERVICE_FQDN_CONDO_4006.
-#  - Secrets come from Coolify magic env vars (SERVICE_PASSWORD_POSTGRES,
-#    SERVICE_BASE64_64_COOKIE). The `:-` defaults exist purely so
-#    `docker compose config` runs locally without warnings; Coolify overrides
-#    them with generated values at deploy time.
+# Bootstrap and redeploys go through bin/deploy.sh, which generates .env on
+# first run with random POSTGRES_PASSWORD / COOKIE_SECRET / ADMIN_PASSWORD.
+# See DEPLOY.md for the operator runbook.
 #
-# NOT FOR PRODUCTION. See COOLIFY.md.
+# Ingress is Caddy on 80/443 with automatic Let's Encrypt SSL; all other
+# services are reachable only on the internal docker network.
+
+x-app-env: &app-env
+  NODE_ENV: production
+  PORT: "4006"
+  SERVER_URL: https://${DOMAIN}
+  COOKIE_SECRET: ${COOKIE_SECRET}
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/local-condo
+  REDIS_URL: redis://redis:6379/1
+
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    depends_on:
+      condo:
+        condition: service_started
+    logging: *default-logging
+
   postgres:
     image: postgres:16.4
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${SERVICE_PASSWORD_POSTGRES:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: postgres
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -28,6 +55,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    logging: *default-logging
 
   redis:
     image: redis:6.2
@@ -40,84 +68,58 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+    logging: *default-logging
 
-  # One-shot bootstrap. We deliberately run the local-dev `bin/prepare.js`
-  # script so a brand-new Coolify deploy needs ZERO manual env-var setup —
-  # the script creates the per-app database, runs migrations, and seeds a
-  # default admin user. This is UNSUITABLE FOR PRODUCTION: it ships
-  # well-known default admin credentials, disables captcha, and leaves
-  # other dev-mode toggles enabled. See COOLIFY.md for the rotation steps
-  # before any public exposure.
+  # One-shot bootstrap: creates the per-app database, runs all migrations, and
+  # seeds the admin user from ADMIN_EMAIL / ADMIN_PASSWORD. Runs to completion
+  # on every `docker compose up` whenever the image hash changes (i.e. after a
+  # rebuild), so new migrations apply automatically on each deploy.
   init:
-    # Reuses the image built by the `condo` service below. Building this
-    # Dockerfile in parallel for init + condo + worker peaks at ~3× the
-    # memory of a single build, which OOM-killed the deploy on a 4 GB host;
-    # giving init/worker no build block keeps it to one build.
     image: condo-monorepo:built
+    build:
+      context: .
+      dockerfile: Dockerfile
     restart: "no"
     command: ["sh", "-c", "node bin/prepare -f condo && yarn workspace @app/condo migrate"]
     environment:
-      - NODE_ENV=production
-      - PORT=4006
-      - SERVICE_FQDN_CONDO_4006
-      - SERVICE_PASSWORD_POSTGRES
-      - SERVICE_BASE64_64_COOKIE
-      - SERVER_URL=${SERVICE_FQDN_CONDO_4006:-http://localhost:4006}
-      - COOKIE_SECRET=${SERVICE_BASE64_64_COOKIE:-dev-only-cookie-secret-rotate-before-public-exposure}
-      - DATABASE_URL=postgresql://postgres:${SERVICE_PASSWORD_POSTGRES:-postgres}@postgres:5432/local-condo
-      - REDIS_URL=redis://redis:6379/1
-      # Tells bin/prepare.js where to reach Postgres/Redis (overrides its
-      # hardcoded 127.0.0.1 defaults so it works from inside a container).
-      - LOCAL_PG_DB_PREFIX=postgresql://postgres:${SERVICE_PASSWORD_POSTGRES:-postgres}@postgres:5432
-      - LOCAL_REDIS_DB_PREFIX=redis://redis:6379
-      # Seed a known admin so you can actually log in after first boot.
-      # CHANGE THESE BEFORE EXPOSING THE DEPLOY PUBLICLY.
-      - DEFAULT_TEST_ADMIN_IDENTITY=admin@example.com
-      - DEFAULT_TEST_ADMIN_SECRET=admin
+      <<: *app-env
+      # bin/prepare.js defaults to 127.0.0.1; redirect it at the in-network
+      # service names.
+      LOCAL_PG_DB_PREFIX: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432
+      LOCAL_REDIS_DB_PREFIX: redis://redis:6379
+      DEFAULT_TEST_ADMIN_IDENTITY: ${ADMIN_EMAIL}
+      DEFAULT_TEST_ADMIN_SECRET: ${ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    logging: *default-logging
 
   condo:
     image: condo-monorepo:built
-    build:
-      context: .
-      dockerfile: Dockerfile
     restart: unless-stopped
     command: ["yarn", "workspace", "@app/condo", "start"]
-    ports:
+    expose:
       - "4006"
-    environment:
-      - NODE_ENV=production
-      - PORT=4006
-      - SERVICE_FQDN_CONDO_4006
-      - SERVICE_PASSWORD_POSTGRES
-      - SERVICE_BASE64_64_COOKIE
-      - SERVER_URL=${SERVICE_FQDN_CONDO_4006:-http://localhost:4006}
-      - COOKIE_SECRET=${SERVICE_BASE64_64_COOKIE:-dev-only-cookie-secret-rotate-before-public-exposure}
-      - DATABASE_URL=postgresql://postgres:${SERVICE_PASSWORD_POSTGRES:-postgres}@postgres:5432/local-condo
-      - REDIS_URL=redis://redis:6379/1
+    environment: *app-env
     depends_on:
       init:
         condition: service_completed_successfully
+    logging: *default-logging
 
   worker:
     image: condo-monorepo:built
     restart: unless-stopped
     command: ["yarn", "workspace", "@app/condo", "worker"]
-    environment:
-      - NODE_ENV=production
-      - PORT=4006
-      - SERVER_URL=${SERVICE_FQDN_CONDO_4006:-http://localhost:4006}
-      - COOKIE_SECRET=${SERVICE_BASE64_64_COOKIE:-dev-only-cookie-secret-rotate-before-public-exposure}
-      - DATABASE_URL=postgresql://postgres:${SERVICE_PASSWORD_POSTGRES:-postgres}@postgres:5432/local-condo
-      - REDIS_URL=redis://redis:6379/1
+    environment: *app-env
     depends_on:
       init:
         condition: service_completed_successfully
+    logging: *default-logging
 
 volumes:
   postgres-data:
   redis-data:
+  caddy-data:
+  caddy-config:

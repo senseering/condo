@@ -23,7 +23,7 @@ RUN set -ex \
     && echo "OK"
 
 # Pruner — runs `bin/prune.sh` inside the image so the installer stage doesn't
-# need a `./out` directory pre-built on the host (Coolify has no pre-build hook).
+# need a `./out` directory pre-built on the host before `docker build` runs.
 FROM base AS pruner
 WORKDIR /repo
 COPY --chown=app:app . /repo
