@@ -85,24 +85,31 @@ services:
     logging: *default-logging
 
   # One-shot bootstrap: creates the per-app database, runs all migrations, and
-  # seeds the admin user from ADMIN_EMAIL / ADMIN_PASSWORD. Runs to completion
-  # on every `docker compose up` whenever the image hash changes (i.e. after a
-  # rebuild), so new migrations apply automatically on each deploy.
+  # seeds (or updates) the admin user from ADMIN_EMAIL / ADMIN_PASSWORD. Runs
+  # to completion on every `docker compose up` whenever the image hash changes
+  # (i.e. after a rebuild), so new migrations apply automatically on each
+  # deploy. create-user.js is idempotent — re-running updates the existing
+  # admin's password rather than creating a duplicate.
   init:
     image: condo-monorepo:built
     build:
       context: .
       dockerfile: Dockerfile
     restart: "no"
-    command: ["sh", "-c", "node bin/prepare -f condo && yarn workspace @app/condo migrate"]
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        node bin/prepare -f condo
+        yarn workspace @app/condo migrate
+        yarn workspace @app/condo node ./bin/create-user.js '${ADMIN_EMAIL}' '{"password":"${ADMIN_PASSWORD}","isAdmin":true,"name":"Admin"}'
     environment:
       <<: *app-env
       # bin/prepare.js defaults to 127.0.0.1; redirect it at the in-network
       # service names.
       LOCAL_PG_DB_PREFIX: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432
       LOCAL_REDIS_DB_PREFIX: redis://redis:6379
-      DEFAULT_TEST_ADMIN_IDENTITY: ${ADMIN_EMAIL}
-      DEFAULT_TEST_ADMIN_SECRET: ${ADMIN_PASSWORD}
     depends_on:
       postgres:
         condition: service_healthy
