@@ -14,12 +14,14 @@ x-app-env: &app-env
   COOKIE_SECRET: ${COOKIE_SECRET}
   DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/local-condo
   REDIS_URL: redis://redis:6379/1
-  # Field-level encryption for the database. bin/prepare.js generates
-  # equivalents into apps/condo/.env on init, but that file lives only in
-  # the init container's filesystem — pass these explicitly so condo and
-  # worker (separate containers) see them too.
-  DATA_ENCRYPTION_VERSION_ID: ${DATA_ENCRYPTION_VERSION_ID}
-  DATA_ENCRYPTION_CONFIG: ${DATA_ENCRYPTION_CONFIG}
+  # Field-level encryption for the database. The full JSON config is
+  # templated here because docker-compose's .env parser silently strips
+  # inner " characters from JSON values (even when single-quoted), so
+  # putting DATA_ENCRYPTION_CONFIG directly in .env produces invalid JSON
+  # at the container's process.env. Only the random secret comes from
+  # .env (as a plain hex string with no " in it).
+  DATA_ENCRYPTION_VERSION_ID: condo_1
+  DATA_ENCRYPTION_CONFIG: '{"condo_1":{"algorithm":"aes-256-gcm","secret":"${DATA_ENCRYPTION_SECRET}","compressor":"brotli","keyDeriver":"pbkdf2-sha512"}}'
   # packages/keystone/fileAdapter defaults to "sbercloud" (Sberbank S3)
   # when unset, which then crashes because we have no S3 creds. Force
   # local-disk uploads. Files are ephemeral (lost on container rebuild) —

@@ -85,8 +85,13 @@ ACME_EMAIL=$ACME_EMAIL
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 COOKIE_SECRET=$COOKIE_SECRET
 
-DATA_ENCRYPTION_VERSION_ID=condo_1
-DATA_ENCRYPTION_CONFIG={"condo_1":{"algorithm":"aes-256-gcm","secret":"$DATA_ENCRYPTION_SECRET","compressor":"brotli","keyDeriver":"pbkdf2-sha512"}}
+# The full DATA_ENCRYPTION_CONFIG JSON is templated inside docker-compose.yml;
+# only the random secret lives in .env. Compose's .env parser strips the
+# inner " characters from JSON values, even single-quoted ones, so the JSON
+# cannot be expressed here directly. Keep this hex string stable for the life
+# of the database — rotating it requires adding a new version to the compose
+# template and bumping DATA_ENCRYPTION_VERSION_ID there.
+DATA_ENCRYPTION_SECRET=$DATA_ENCRYPTION_SECRET
 
 # Seeded into the database by the init container on first boot.
 ADMIN_EMAIL=admin@$DOMAIN
