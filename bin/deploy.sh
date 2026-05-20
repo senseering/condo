@@ -68,6 +68,11 @@ if [[ ! -f .env ]]; then
 	POSTGRES_PASSWORD=$(openssl rand -hex 24)
 	COOKIE_SECRET=$(openssl rand -hex 32)
 	ADMIN_PASSWORD=$(openssl rand -hex 12)
+	# Used by packages/keystone/crypto to encrypt sensitive fields at rest.
+	# Must stay stable for the life of the database — rotating it requires
+	# adding a new version to DATA_ENCRYPTION_CONFIG and switching
+	# DATA_ENCRYPTION_VERSION_ID, not editing the existing version in place.
+	DATA_ENCRYPTION_SECRET=$(openssl rand -hex 32)
 
 	umask 077
 	cat > .env <<EOF
@@ -79,6 +84,9 @@ ACME_EMAIL=$ACME_EMAIL
 
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 COOKIE_SECRET=$COOKIE_SECRET
+
+DATA_ENCRYPTION_VERSION_ID=condo_1
+DATA_ENCRYPTION_CONFIG={"condo_1":{"algorithm":"aes-256-gcm","secret":"$DATA_ENCRYPTION_SECRET","compressor":"brotli","keyDeriver":"pbkdf2-sha512"}}
 
 # Seeded into the database by the init container on first boot.
 ADMIN_EMAIL=admin@$DOMAIN
