@@ -28,6 +28,12 @@ x-app-env: &app-env
   # Stub the upstream address-service so the app doesn't try to call an
   # external Russian gov address API we don't run here.
   FAKE_ADDRESS_SERVICE_CLIENT: "true"
+  # No SMS/email gateway is configured. Route every outbound notification
+  # (resident signup SMS codes, password-reset emails, push, telegram) to
+  # the worker's stdout instead of dropping them. Read the code with:
+  #   docker compose logs --tail=50 worker | grep -E "smsAdapter|Message"
+  # Replace with real provider creds for a public-facing deploy.
+  NOTIFICATION__SEND_ALL_MESSAGES_TO_CONSOLE: "true"
 
 x-default-logging: &default-logging
   driver: json-file
