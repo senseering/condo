@@ -20,6 +20,14 @@ x-app-env: &app-env
   # worker (separate containers) see them too.
   DATA_ENCRYPTION_VERSION_ID: ${DATA_ENCRYPTION_VERSION_ID}
   DATA_ENCRYPTION_CONFIG: ${DATA_ENCRYPTION_CONFIG}
+  # packages/keystone/fileAdapter defaults to "sbercloud" (Sberbank S3)
+  # when unset, which then crashes because we have no S3 creds. Force
+  # local-disk uploads. Files are ephemeral (lost on container rebuild) —
+  # configure S3 + FILE_FIELD_ADAPTER=s3 for any real production deploy.
+  FILE_FIELD_ADAPTER: local
+  # Stub the upstream address-service so the app doesn't try to call an
+  # external Russian gov address API we don't run here.
+  FAKE_ADDRESS_SERVICE_CLIENT: "true"
 
 x-default-logging: &default-logging
   driver: json-file
