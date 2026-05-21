@@ -96,6 +96,15 @@ DATA_ENCRYPTION_SECRET=$DATA_ENCRYPTION_SECRET
 # Seeded into the database by the init container on first boot.
 ADMIN_EMAIL=admin@$DOMAIN
 ADMIN_PASSWORD=$ADMIN_PASSWORD
+
+# Optional: enable Twilio SMS (resident OTPs, password-reset codes). Without
+# this, outbound SMS lands in worker logs — see
+# NOTIFICATION__SEND_ALL_MESSAGES_TO_CONSOLE in docker-compose.yml.
+#SMS_PROVIDER=TWILIO
+#TWILIO_ACCOUNT_SID=AC...
+#TWILIO_AUTH_TOKEN=...
+#TWILIO_FROM_NUMBER=+1XXXXXXXXXX
+#NOTIFICATION_SEND_ALL_MESSAGES_TO_CONSOLE=false
 EOF
 
 	cat <<EOF

@@ -30,12 +30,26 @@ x-app-env: &app-env
   # Stub the upstream address-service so the app doesn't try to call an
   # external Russian gov address API we don't run here.
   FAKE_ADDRESS_SERVICE_CLIENT: "true"
-  # No SMS/email gateway is configured. Route every outbound notification
-  # (resident signup SMS codes, password-reset emails, push, telegram) to
-  # the worker's stdout instead of dropping them. Read the code with:
+  # SMS provider. Defaults to empty -> SMSAdapter falls back to sms.ru (which
+  # has no creds and would fail) but it doesn't matter because the console
+  # sink below short-circuits delivery. To enable Twilio, set in .env:
+  #   SMS_PROVIDER=TWILIO
+  #   TWILIO_ACCOUNT_SID=AC...
+  #   TWILIO_AUTH_TOKEN=...
+  #   TWILIO_FROM_NUMBER=+1XXXXXXXXXX
+  #   NOTIFICATION_SEND_ALL_MESSAGES_TO_CONSOLE=false
+  # Full adapter list: apps/condo/domains/notification/adapters/smsAdapter.js
+  SMS_PROVIDER: ${SMS_PROVIDER:-}
+  # JSON is templated here for the same reason DATA_ENCRYPTION_CONFIG is:
+  # docker compose's .env parser strips inner " characters from JSON values.
+  # The three TWILIO_* pieces come from .env as plain strings.
+  TWILIO_API_CONFIG: '{"accountSid":"${TWILIO_ACCOUNT_SID:-}","authToken":"${TWILIO_AUTH_TOKEN:-}","fromNumber":"${TWILIO_FROM_NUMBER:-}","api_url":"https://api.twilio.com/2010-04-01/Accounts"}'
+  # When true (the default), every outbound notification (SMS codes, email,
+  # push, telegram) is logged to the worker's stdout instead of being sent.
+  # Read the code with:
   #   docker compose logs --tail=50 worker | grep -E "smsAdapter|Message"
-  # Replace with real provider creds for a public-facing deploy.
-  NOTIFICATION__SEND_ALL_MESSAGES_TO_CONSOLE: "true"
+  # Set to "false" in .env once a real SMS / email provider is configured.
+  NOTIFICATION__SEND_ALL_MESSAGES_TO_CONSOLE: ${NOTIFICATION_SEND_ALL_MESSAGES_TO_CONSOLE:-true}
 
 x-default-logging: &default-logging
   driver: json-file

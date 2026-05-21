@@ -98,6 +98,41 @@ docker compose down                # stop everything (volumes persist)
 docker compose down -v             # nuke everything including volumes
 ```
 
+## Enabling Twilio SMS
+
+By default, outbound SMS (resident sign-up OTPs, password-reset codes) is
+routed to the worker's stdout — search `docker compose logs worker` for
+the code if you need it during testing. To send real SMS via Twilio:
+
+1. Buy an SMS-capable phone number in the Twilio Console (or claim a trial
+   one) and grab the **Account SID**, **Auth Token**, and the **From number**
+   in E.164 format (e.g. `+12025551234`).
+2. On the host, append to `/opt/condo/.env`:
+
+   ```
+   SMS_PROVIDER=TWILIO
+   TWILIO_ACCOUNT_SID=AC...
+   TWILIO_AUTH_TOKEN=...
+   TWILIO_FROM_NUMBER=+12025551234
+   NOTIFICATION_SEND_ALL_MESSAGES_TO_CONSOLE=false
+   ```
+
+   All four `TWILIO_*` vars are required, and the console-sink flag must be
+   flipped to `false` — otherwise the worker will keep short-circuiting
+   messages to stdout regardless of the provider config.
+
+3. `cd /opt/condo && sudo ./bin/deploy.sh` (or just
+   `sudo docker compose up -d condo worker` if you don't want to redeploy
+   the image).
+
+4. Verify outbound delivery in Twilio Console → Monitor → Logs → Messaging
+   after triggering a resident sign-up. The adapter sends `Messages.json`
+   requests against `api.twilio.com/2010-04-01`.
+
+Switching to another provider (`SMSC`, `INSTASENT`) follows the same
+shape — see `apps/condo/domains/notification/adapters/smsAdapter.js` for
+the JSON each one expects.
+
 ## Backups
 
 Nothing is automated. At a minimum, schedule `pg_dump`:
